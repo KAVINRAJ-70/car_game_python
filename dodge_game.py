@@ -1,0 +1,313 @@
+import pygame
+import random
+import sys
+
+# Initialize Pygame
+pygame.init()
+
+# Get screen width and height for fullscreen
+info = pygame.display.Info()
+WIDTH, HEIGHT = info.current_w, info.current_h
+
+# Set up game window in fullscreen mode
+window = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
+pygame.display.set_caption('Smooth Car Racing Game')
+
+# Define colors
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GRAY = (169, 169, 169)
+
+# Load assets (car, truck, bus, motorcycle images)
+car_img = pygame.image.load('sport.png')  # Replace with your car image
+truck_img = pygame.image.load('truck.png')  # Replace with truck image
+bus_img = pygame.image.load('buses.png')  # Replace with bus image
+motorcycle_img = pygame.image.load('car.png')  # Replace with motorcycle image
+
+# Define vehicle sizes for collision detection (based on the images)
+car_width, car_height = 50, 60
+truck_width, truck_height = 60, 80
+bus_width, bus_height = 60, 90
+motorcycle_width, motorcycle_height = 40, 60
+
+car = pygame.transform.scale(car_img, (car_width, car_height))
+truck = pygame.transform.scale(truck_img, (truck_width, truck_height))
+bus = pygame.transform.scale(bus_img, (bus_width, bus_height))
+motorcycle = pygame.transform.scale(motorcycle_img, (motorcycle_width, motorcycle_height))
+
+# Font for UI elements
+font = pygame.font.SysFont('Arial', 30)
+
+# Game variables
+car_x = WIDTH // 2 - car_width // 2
+car_y = HEIGHT - car_height - 10
+car_speed = 5
+enemies = []
+enemy_speed = 5
+score = 0
+health = 3
+game_over = False
+player_name = ""
+
+# Road boundaries for a wider road
+ROAD_LEFT = WIDTH // 2 - 200  # Left boundary of the road (400px wide road)
+ROAD_RIGHT = WIDTH // 2 + 200  # Right boundary of the road (400px wide road)
+
+# Variables for the lane markers movement
+line_y_positions = [i for i in range(0, HEIGHT, 40)]  # Starting positions of the small dashed lines
+
+HIGHSCORE_FILE = 'highscore.txt'
+
+# Functions to handle UI and game mechanics
+
+def get_high_scores():
+    """Get the top 3 high scores from the file"""
+    try:
+        with open(HIGHSCORE_FILE, 'r') as f:
+            lines = f.readlines()
+            scores = []
+            for line in lines:
+                parts = line.strip().split(',')
+                if len(parts) == 2 and parts[1].isdigit():  # Ensure score is a number
+                    scores.append((parts[0], int(parts[1])))  # Parse score as integer
+            scores.sort(key=lambda x: x[1], reverse=True)  # Sort scores in descending order
+            return scores[:3]  # Return top 3 scores
+    except FileNotFoundError:
+        return []  # Return an empty list if the file does not exist
+
+def save_high_score(name, score):
+    try:
+        with open(HIGHSCORE_FILE, 'a') as f:
+            print(f"Saving high score: {name}, {score}")  # Debugging output
+            f.write(f"{name},{score}\n")
+    except Exception as e:
+        print(f"Error saving high score: {e}")
+
+def draw_ui():
+    """Draws the UI elements on the screen"""
+    score_text = font.render(f"Score: {score}", True, WHITE)
+    health_text = font.render(f"Health: {health}", True, WHITE)
+    window.blit(score_text, (20, 20))
+    window.blit(health_text, (WIDTH - health_text.get_width() - 20, 20))
+
+    # High score
+    high_scores = get_high_scores()
+    if high_scores:
+        high_name, high_score = high_scores[0]  # Get top high score
+        high_score_text = font.render(f"High Score: {high_name}  {high_score}", True, BLACK)
+        window.blit(high_score_text, (WIDTH // 2 - high_score_text.get_width() // 2, 20))
+
+def draw_car(x, y):
+    """Draw the player's car"""
+    window.blit(car, (x, y))
+
+def draw_enemies():
+    """Draw enemies (truck, bus, or motorcycle) and move them downwards"""
+    global score, health, game_over
+    for enemy in enemies[:]:
+        if enemy["type"] == "truck":
+            window.blit(truck, (enemy["x"], enemy["y"]))
+        elif enemy["type"] == "bus":
+            window.blit(bus, (enemy["x"], enemy["y"]))
+        elif enemy["type"] == "motorcycle":
+            window.blit(motorcycle, (enemy["x"], enemy["y"]))
+
+        enemy["y"] += enemy_speed
+
+        # Accurate collision detection after movement
+        car_rect = pygame.Rect(car_x, car_y, car_width, car_height)
+        enemy_rect = pygame.Rect(enemy["x"], enemy["y"], truck_width, truck_height)
+
+        if enemy_rect.colliderect(car_rect):
+            enemies.remove(enemy)
+            health -= 1
+            if health <= 0:
+                game_over = True
+            else:
+                pygame.time.delay(500)  # Delay to simulate damage
+
+        if enemy["y"] > HEIGHT:
+            enemies.remove(enemy)
+            score += 1
+
+def spawn_enemy():
+    """Spawn new enemies at random positions within the road"""
+    x = random.randint(ROAD_LEFT + 10, ROAD_RIGHT - truck_width - 10)  # Spawn within the road boundaries
+    enemy_type = random.choice(["truck", "bus", "motorcycle"])  # Randomly choose between truck, bus, or motorcycle
+    if enemy_type == "truck":
+        enemy = {"type": "truck", "x": x, "y": -120}
+        enemies.append(enemy)
+    elif enemy_type == "bus":
+        enemy = {"type": "bus", "x": x, "y": -120}
+        enemies.append(enemy)
+    elif enemy_type == "motorcycle":
+        enemy = {"type": "motorcycle", "x": x, "y": -120}
+        enemies.append(enemy)
+
+def draw_road():
+    """Draw the road lines to simulate a highway"""
+    road_color = GRAY
+    pygame.draw.rect(window, road_color, (ROAD_LEFT, 0, 400, HEIGHT))  # Wider road (400px)
+    
+    # Draw the fixed center line
+    pygame.draw.line(window, WHITE, (WIDTH // 2, 0), (WIDTH // 2, HEIGHT), 5)  # Fixed center line
+    
+    # Draw the moving small dashed lines
+    for y in line_y_positions:
+        pygame.draw.line(window, WHITE, (WIDTH // 2 - 100, y), (WIDTH // 2 - 100, y + 20), 5)
+        pygame.draw.line(window, WHITE, (WIDTH // 2 + 100, y), (WIDTH // 2 + 100, y + 20), 5)
+
+def move_lines():
+    """Move the small dashed lines down and reset when out of screen"""
+    global line_y_positions
+    # Move all the lines down
+    line_y_positions = [y + 5 for y in line_y_positions]
+
+    # Reset lines that have gone out of screen
+    for i in range(len(line_y_positions)):
+        if line_y_positions[i] > HEIGHT:
+            line_y_positions[i] = -20  # Reset to above the screen to simulate a looping effect
+
+def input_name():
+    """Handle input for player name"""
+    global player_name
+    input_box = pygame.Rect(WIDTH // 2 - 200, HEIGHT // 2, 400, 40)
+    name_font = pygame.font.SysFont('Arial', 30)
+    player_name = ""
+    typing = True
+    while typing:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_RETURN and player_name != "":  # Only proceed if the name is not empty
+                    typing = False
+                elif event.key == pygame.K_BACKSPACE:
+                    player_name = player_name[:-1]
+                else:
+                    player_name += event.unicode
+
+        window.fill(BLACK)
+        draw_road()
+        move_lines()
+        draw_ui()
+
+        name_text = name_font.render(f"Enter Your Name: {player_name}", True, BLACK)
+        window.blit(name_text, (WIDTH // 2 - name_text.get_width() // 2, HEIGHT // 2 - 50))
+
+        pygame.draw.rect(window, WHITE, input_box, 2)
+        name_input = name_font.render(player_name, True, BLACK)
+        window.blit(name_input, (input_box.x + 5, input_box.y + 5))
+
+        pygame.display.update()
+
+def show_leaderboard():
+    """Display leaderboard with top 3 players and background image in fullscreen"""
+    window.fill(BLACK)
+
+    # Draw the background image for fullscreen mode
+    background_img = pygame.image.load('front.jpg')  # Replace with your background image file
+    background_img = pygame.transform.scale(background_img, (WIDTH, HEIGHT))  # Scale it to fullscreen size
+    window.blit(background_img, (0, 0))  # Draw the background image
+
+    leaderboard_text = font.render("Leaderboard", True, WHITE)
+    window.blit(leaderboard_text, (WIDTH // 2 - leaderboard_text.get_width() // 2, HEIGHT // 4 - 100))
+
+    high_scores = get_high_scores()
+    for i, (name, score) in enumerate(high_scores):
+        score_text = font.render(f"{i + 1}. {name}: {score}", True, WHITE)
+        window.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 4 + i * 40))
+
+    pygame.display.update()
+    pygame.time.wait(3000)  # Display leaderboard for 3 seconds
+
+def welcome_screen():
+    """Display the welcome screen with background image and message"""
+    window.fill(BLACK)
+
+    # Load and display the welcome background image
+    welcome_background = pygame.image.load('back.jpg')  # Replace with your welcome background
+    welcome_background = pygame.transform.scale(welcome_background, (WIDTH, HEIGHT))
+    window.blit(welcome_background, (0, 0))
+
+    # Display welcome text
+    welcome_text = font.render("Welcome to Smooth Car Racing!", True, WHITE)
+    start_text = font.render("Press any key to start", True, WHITE)
+    window.blit(welcome_text, (WIDTH // 2 - welcome_text.get_width() // 2, HEIGHT // 2 - 100))
+    window.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, HEIGHT // 2))
+
+    pygame.display.update()
+
+    # Wait for any key press to start the game
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                waiting = False  # Start the game when any key is pressed
+
+def main():
+    global car_x, car_y, game_over, score, health, player_name
+    clock = pygame.time.Clock()
+    spawn_enemy_timer = 0
+    game_over = False
+
+    welcome_screen()  # Show welcome screen at the start of the game
+
+    input_name()  # Get player name at the start of the game
+
+    while True:
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        # Game over screen
+        if game_over:
+            window.fill(BLACK)  # Clear screen to black
+            game_over_text = font.render(f"Game Over!! Final Score: {score}", True, WHITE)
+            window.blit(game_over_text, (WIDTH // 2 - game_over_text.get_width() // 2, HEIGHT // 2))
+            pygame.display.update()
+
+            save_high_score(player_name, score)  # Save the score after game over
+            show_leaderboard()  # Show leaderboard after game over
+
+            # Wait for the player to quit
+            pygame.time.wait(2000)  # Wait for 2 seconds before closing the game
+            pygame.quit()
+            sys.exit()
+
+        # Handle player movement
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT] and car_x > ROAD_LEFT:  # Restrict car to road boundaries
+            car_x -= car_speed
+        if keys[pygame.K_RIGHT] and car_x < ROAD_RIGHT - car_width:  # Restrict car to road boundaries
+            car_x += car_speed
+        if keys[pygame.K_UP] and car_y > 0:  # Move the car upwards (forward)
+            car_y -= car_speed
+        if keys[pygame.K_DOWN] and car_y < HEIGHT - car_height:  # Move the car downwards (backward)
+            car_y += car_speed
+
+        # Draw everything
+        window.fill(BLACK)  # Clear screen to black
+        draw_road()
+        move_lines()  # Move the small dashed lines
+        draw_car(car_x, car_y)
+        draw_enemies()
+        draw_ui()
+
+        # Spawn new enemies at a set interval
+        spawn_enemy_timer += 1
+        if spawn_enemy_timer % 60 == 0:  # Spawn every 60 frames (~1 second)
+            spawn_enemy()
+
+        pygame.display.update()
+        clock.tick(60)  # 60 FPS
+
+if __name__ == '__main__':
+    main()
